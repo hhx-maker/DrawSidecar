@@ -19,3 +19,15 @@ test('imports and previews a local PNG', async ({ page }) => {
   await expect(page.getByText('roundtrip-4x3.png')).toBeVisible();
   await expect(page.getByRole('button', { name: '导出 PNG' })).toBeEnabled();
 });
+
+test('restores the latest project from IndexedDB after reload', async ({ page }) => {
+  await page.goto('/');
+  const chooserPromise = page.waitForEvent('filechooser');
+  await page.getByText('导入 PNG').first().click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles('public/fixtures/roundtrip-4x3.png');
+  await expect(page.getByLabel(/图像预览 4×3/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel(/图像预览 4×3/)).toBeVisible();
+  await expect(page.getByText('已恢复本地项目。')).toBeVisible();
+});

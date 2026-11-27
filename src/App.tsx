@@ -8,8 +8,12 @@ import { decodeSourceImage, disposePreviewImage } from './services/imageDecode';
 import { getNetworkState, getOfflineReadiness, type OfflineReadiness } from './services/offline';
 import { exportUnchangedPng } from './services/export';
 import { ImportSequence } from './services/importSequence';
+import { History } from './services/history';
+import { createProjectMeta, deleteProject, loadLatestProject, saveProject } from './services/projectStore';
 import { registerPwa } from './pwa';
+import { createComputeWorker } from './services/workerRpc';
 import type { PreviewImage, SourceImage } from './types/image';
+import type { ProjectMeta } from './types/project';
 
 const initialOffline: OfflineReadiness = { network: getNetworkState(), controlled: false, cacheComplete: false, ready: false };
 
@@ -30,6 +34,8 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const sequenceRef = useRef(new ImportSequence());
   const previewRef = useRef<PreviewImage | null>(null);
+  const historyRef = useRef(new History<SourceImage | null>(null));
+  const projectMetaRef = useRef<ProjectMeta | null>(null);
 
   const refreshOffline = useCallback(() => {
     void getOfflineReadiness().then(setOffline);
@@ -46,6 +52,60 @@ export default function App() {
       window.removeEventListener('offline', refreshOffline);
     };
   }, [refreshOffline]);
+
+  useEffect(() => {
+    const worker = createComputeWorker();
+    void worker.run({ jobId: crypto.randomUUID(), revision: 0, toolId: 'ping', params: {} }).catch(() => setNotice('计算 Worker 尚未就绪。'));
+    return () => worker.dispose();
+  }, []);
+
+  const applySource = useCallback(async (nextSource: SourceImage | null, notice: string) => {
+    const sequence = sequenceRef.current.next();
+    if (!nextSource) {
+      if (previewRef.current) disposePreviewImage(previewRef.current);
+      previewRef.current = null;
+      setPreview(null);
+      setSource(null);
+      setNotice(notice);
+      return;
+    }
+    const file = new File([nextSource.blob], nextSource.fileName, { type: 'image/png' });
+    const decoded = await decodeSourceImage(file, sequence);
+    if (!sequenceRef.current.isCurrent(sequence)) {
+      disposePreviewImage(decoded.preview);
+      return;
+    }
+    if (previewRef.current) disposePreviewImage(previewRef.current);
+    previewRef.current = decoded.preview;
+    setSource(decoded.source);
+    setPreview(decoded.preview);
+    setNotice(notice);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void loadLatestProject().then(async (stored) => {
+      if (!active || !stored) return;
+      try {
+        const file = new File([new Blob([stored.sourceBytes], { type: stored.sourceMimeType })], stored.fileName, { type: stored.sourceMimeType });
+        const decoded = await decodeSourceImage(file, sequenceRef.current.next());
+        if (!active) {
+          disposePreviewImage(decoded.preview);
+          return;
+        }
+        projectMetaRef.current = stored.meta;
+        historyRef.current.push(decoded.source);
+        if (previewRef.current) disposePreviewImage(previewRef.current);
+        previewRef.current = decoded.preview;
+        setSource(decoded.source);
+        setPreview(decoded.preview);
+        setNotice('已恢复本地项目。');
+      } catch {
+        setNotice('本地项目无法恢复，请重新导入 PNG。');
+      }
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => () => {
     if (previewRef.current) disposePreviewImage(previewRef.current);
@@ -65,6 +125,14 @@ export default function App() {
       previewRef.current = decoded.preview;
       setSource(decoded.source);
       setPreview(decoded.preview);
+      historyRef.current.push(decoded.source);
+      const now = Date.now();
+      const existing = projectMetaRef.current;
+      const meta = existing && existing.imageHash === decoded.source.sha256
+        ? { ...existing, revision: existing.revision + 1, updatedAt: now }
+        : createProjectMeta(decoded.source.sha256, decoded.source.fileName, decoded.source.metadata.width, decoded.source.metadata.height, now);
+      projectMetaRef.current = meta;
+      await saveProject({ meta, sourceBytes: await decoded.source.blob.arrayBuffer(), sourceMimeType: decoded.source.blob.type, fileName: decoded.source.fileName, metadata: decoded.source.metadata });
       setNotice('已载入原始 PNG。');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '无法读取这张 PNG。');
@@ -95,13 +163,25 @@ export default function App() {
   }, [importFile]);
 
   const clearImage = () => {
+    historyRef.current.push(null);
     sequenceRef.current.next();
     if (previewRef.current) disposePreviewImage(previewRef.current);
     previewRef.current = null;
     setPreview(null);
     setSource(null);
+    const projectId = projectMetaRef.current?.id;
+    projectMetaRef.current = null;
+    if (projectId) void deleteProject(projectId);
     setError(null);
     setNotice('已清空当前图像。');
+  };
+
+  const undo = () => {
+    void applySource(historyRef.current.undo(), '已撤销最近一次图像操作。');
+  };
+
+  const redo = () => {
+    void applySource(historyRef.current.redo(), '已重做图像操作。');
   };
 
   const download = () => {
@@ -135,7 +215,7 @@ export default function App() {
     <main className="app-shell workbench-shell">
       <header className="app-header"><strong>DrawSidecar</strong><span>{offline.ready ? '离线就绪' : '离线资源检查中'}</span></header>
       <div className="workbench">
-        <Toolbar onImport={importFile} onPaste={pasteImage} onDownload={download} onCopy={copy} onReset={() => setNotice('视图已重置。')} onClear={clearImage} canCopy={canCopy} />
+        <Toolbar onImport={importFile} onPaste={pasteImage} onDownload={download} onCopy={copy} onReset={() => setNotice('视图已重置。')} onClear={clearImage} onUndo={undo} onRedo={redo} canUndo={historyRef.current.canUndo} canRedo={historyRef.current.canRedo} canCopy={canCopy} />
         <section className="canvas-column" aria-label="Canvas 预览">
           <CanvasPreview preview={preview} width={source.metadata.width} height={source.metadata.height} />
           {notice && <p className="notice" role="status">{notice}</p>}

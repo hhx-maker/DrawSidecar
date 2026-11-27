@@ -5,10 +5,14 @@ interface ToolbarProps {
   onCopy: () => void;
   onReset: () => void;
   onClear: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   canCopy: boolean;
 }
 
-export function Toolbar({ onImport, onPaste, onDownload, onCopy, onReset, onClear, canCopy }: ToolbarProps) {
+export function Toolbar({ onImport, onPaste, onDownload, onCopy, onReset, onClear, onUndo, onRedo, canUndo, canRedo, canCopy }: ToolbarProps) {
   return (
     <aside className="toolbar" aria-label="工具">
       <div className="toolbar-heading">工具</div>
@@ -26,6 +30,8 @@ export function Toolbar({ onImport, onPaste, onDownload, onCopy, onReset, onClea
       <button type="button" className="tool-button" onClick={onCopy} disabled={!canCopy}>复制图像</button>
       <div className="tool-divider" />
       <button type="button" className="tool-button" onClick={onReset}>重置视图</button>
+      <button type="button" className="tool-button" onClick={onUndo} disabled={!canUndo}>撤销</button>
+      <button type="button" className="tool-button" onClick={onRedo} disabled={!canRedo}>重做</button>
       <button type="button" className="tool-button danger-button" onClick={onClear}>清空图像</button>
     </aside>
   );

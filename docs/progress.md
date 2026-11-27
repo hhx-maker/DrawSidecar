@@ -27,11 +27,29 @@
 
 ### TODO
 
-- [ ] Phase 1 项目元数据、Worker RPC、区域分析和本地持久化。Phase 0 完成前不实现。
+- [ ] Phase 2 缺口检测、骨架化、区域分析、智能选区和填色。Phase 1 未实现这些算法。
+
+## Phase 1 — 项目基础设施
+
+### PASS
+
+- [x] IndexedDB 项目元数据和源 PNG 字节持久化。
+- [x] 最近项目恢复、清空、源状态撤销与重做。
+- [x] `jobId`/`revision`/`toolId` Worker RPC 和 `ping` 基础任务。
+- [x] 工具注册表和重复 ID 校验。
+- [x] contain-fit Canvas 坐标映射与边界钳制。
+- [x] 非破坏性 Uint8Array Mask 叠加显示基础。
+- [x] Chromium/WebKit 导入、刷新恢复和本地请求检查。
+
+### MANUAL_PENDING
+
+- [ ] iPad Safari IndexedDB 配额、数据清理后的提示和长期恢复。
+- [ ] iPadOS 触控下撤销/重做按钮和 Mask 对齐。
+- [ ] 真机 Worker 生命周期、内存压力和版本升级恢复。
 
 ## 证据记录
 
-2026-11-27 本地证据：
+2026-11-28 Phase 1 本地证据：
 
 - `npm run typecheck` — `PASS`。
 - `npm run lint` — `PASS`。
@@ -40,5 +58,8 @@
 - `npm run test:e2e` — `PASS`，Chromium 2 项、WebKit 2 项通过。
 - `VITE_BASE_PATH=/DrawSidecar/ npm run build` — `PASS`，manifest 的 `start_url`/`scope` 和构建资源前缀已检查。
 - `git diff --check` — `PASS`，工作区干净。
+- `npm run test` — `PASS`，11 个测试文件、16 个测试通过。
+- `npm run test:e2e` — `PASS`，Chromium/WebKit 共 6 个测试通过，包括 IndexedDB 刷新恢复。
+- `npm run build` — `PASS`，Workbox 预缓存 9 项资源。
 
 `npm install` 报告了 npm audit 的 4 个 moderate severity advisories，未使用 `npm audit fix --force`，避免未经授权升级依赖树。当前仓库只在本地 `feat/phase0-offline-roundtrip` 分支工作，没有远程、推送、合并或发布操作。

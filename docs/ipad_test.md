@@ -23,6 +23,10 @@
 - [ ] `MANUAL_PENDING` 在 Procreate 中插入测试 PNG，记录是否发生居中、缩放、透明裁切或位移。不能把浏览器导出正确等同为 Procreate 对齐成功。
 - [ ] `MANUAL_PENDING` 4096² 图像、多次连续导入和清空操作，记录卡顿、内存终止和资源释放情况。
 - [ ] `MANUAL_PENDING` 缓存清理、版本更新和 Service Worker 未接管页面的提示行为。
+- [ ] `MANUAL_PENDING` 导入后关闭并重新打开页面，确认最近项目从 IndexedDB 恢复。
+- [ ] `MANUAL_PENDING` 清除站点数据后确认界面提示重新导入，不出现伪恢复成功。
+- [ ] `MANUAL_PENDING` 使用触控点击撤销/重做，确认源图尺寸、Alpha 和像素坐标保持一致。
+- [ ] `MANUAL_PENDING` 在存在 Mask 叠加时检查显示坐标与源图一致，确认原始线稿没有被覆盖。
 
 ## 执行步骤
 
