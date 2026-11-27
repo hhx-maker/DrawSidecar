@@ -31,3 +31,17 @@ test('restores the latest project from IndexedDB after reload', async ({ page })
   await expect(page.getByLabel(/图像预览 4×3/)).toBeVisible();
   await expect(page.getByText('已恢复本地项目。')).toBeVisible();
 });
+
+test('fits a large imported image to the canvas area', async ({ page }) => {
+  await page.goto('/');
+  const chooserPromise = page.waitForEvent('filechooser');
+  await page.getByText('导入 PNG').first().click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles('public/fixtures/roundtrip-2048x1024.png');
+  const preview = page.getByLabel(/图像预览 2048×1024/);
+  await expect(preview).toBeVisible();
+  await expect.poll(async () => (await preview.boundingBox())?.width ?? 0).toBeGreaterThan(400);
+  const box = await preview.boundingBox();
+  expect(box?.width ?? 0).toBeGreaterThan(400);
+  expect(box?.height ?? 0).toBeGreaterThan(200);
+});

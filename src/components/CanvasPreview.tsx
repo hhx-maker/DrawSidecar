@@ -16,7 +16,7 @@ export function CanvasPreview({ preview, width, height, mask }: CanvasPreviewPro
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    const container = canvas?.parentElement;
+    const container = canvas?.closest<HTMLElement>('.canvas-column');
     if (!canvas || !container) return;
     const draw = () => {
       const context = canvas.getContext('2d');
