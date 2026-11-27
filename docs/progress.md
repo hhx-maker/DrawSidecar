@@ -31,4 +31,14 @@
 
 ## 证据记录
 
-命令和结果在最终报告中区分 PASS、FAIL 和未执行。当前仓库只在本地 `feat/phase0-offline-roundtrip` 分支工作，没有远程、推送、合并或发布操作。
+2026-11-27 本地证据：
+
+- `npm run typecheck` — `PASS`。
+- `npm run lint` — `PASS`。
+- `npm run test` — `PASS`，6 个测试文件、10 个测试通过。
+- `npm run build` — `PASS`，Workbox 预缓存 9 项资源。
+- `npm run test:e2e` — `PASS`，Chromium 2 项、WebKit 2 项通过。
+- `VITE_BASE_PATH=/DrawSidecar/ npm run build` — `PASS`，manifest 的 `start_url`/`scope` 和构建资源前缀已检查。
+- `git diff --check` — `PASS`，工作区干净。
+
+`npm install` 报告了 npm audit 的 4 个 moderate severity advisories，未使用 `npm audit fix --force`，避免未经授权升级依赖树。当前仓库只在本地 `feat/phase0-offline-roundtrip` 分支工作，没有远程、推送、合并或发布操作。
