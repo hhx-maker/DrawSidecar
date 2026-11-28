@@ -52,6 +52,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .phase2-summary, .phase2-candidate, .phase2-note, .phase2-notice { margin: 8px 0 0; font-size: .78rem; line-height: 1.45; }
 .phase2-notice { color: #526b55; }
 .phase2-note { color: #8a918f; }
+.phase2-region { margin: 8px 6px 0 0; padding: 6px 8px; color: #52606d; background: #fffdf9; border: 1px solid #c9c1b7; border-radius: 7px; cursor: pointer; font-size: .76rem; }
+.phase2-region.selected { color: #fffdf9; background: #1f2933; border-color: #1f2933; }
 .status-panel dl { margin: 18px 0; }
 .status-panel dl > div { padding: 12px 0; border-bottom: 1px solid #ebe5dc; }
 .status-panel dt { font-size: .75rem; color: #8a918f; }

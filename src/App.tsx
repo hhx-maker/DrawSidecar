@@ -48,6 +48,9 @@ export default function App() {
   const [phase2Regions, setPhase2Regions] = useState<RegionInfo[]>([]);
   const [phase2Busy, setPhase2Busy] = useState(false);
   const [phase2Notice, setPhase2Notice] = useState<string | null>(null);
+  const [selectedRegionId, setSelectedRegionId] = useState<number | null>(null);
+  const [hasDerivedFill, setHasDerivedFill] = useState(false);
+  const derivedFillRef = useRef<Uint8ClampedArray | null>(null);
 
   const refreshOffline = useCallback(() => {
     void getOfflineReadiness().then(setOffline);
@@ -118,21 +121,31 @@ export default function App() {
     setPhase2Busy(true); setPhase2Notice('正在重算连通区域…');
     try {
       const result = await runPhase2Task<{ labels: ArrayBuffer; regions: RegionInfo[]; width: number; height: number }>('regions', { obstacle: obstacle.buffer, width: source.metadata.width, height: source.metadata.height });
-      regionMapRef.current = { labels: new Int32Array(result.labels), regions: result.regions, width: result.width, height: result.height }; setPhase2Regions(result.regions); setPhase2Notice(`已生成 ${result.regions.length} 个几何区域。`);
+      regionMapRef.current = { labels: new Int32Array(result.labels), regions: result.regions, width: result.width, height: result.height }; setPhase2Regions(result.regions); setSelectedRegionId(result.regions.find((region) => !region.isBackground)?.id ?? null); setPhase2Notice(`已生成 ${result.regions.length} 个几何区域。`);
     } catch (caught) { setPhase2Notice(caught instanceof Error ? caught.message : '区域分析失败。'); }
     finally { setPhase2Busy(false); }
   }, [runPhase2Task, source]);
 
   const fillRegion = useCallback(async () => {
-    const map = regionMapRef.current; if (!map) return;
-    const region = map.regions.find((item) => !item.isBackground); if (!region) { setPhase2Notice('没有可安全填充的前景区域。'); return; }
+    const map = regionMapRef.current; if (!map || selectedRegionId === null) return;
+    const region = map.regions.find((item) => item.id === selectedRegionId); if (!region) { setPhase2Notice('未找到选中区域。'); return; }
     setPhase2Busy(true); setPhase2Notice('正在生成独立 RGBA 填色层…');
     try {
-      await runPhase2Task('fill', { labels: map.labels.buffer, regions: map.regions, width: map.width, height: map.height, regionId: region.id, color: [255, 196, 64, 180] });
+      const result = await runPhase2Task<{ rgba: ArrayBuffer; warnings: string[] }>('fill', { labels: map.labels.buffer, regions: map.regions, width: map.width, height: map.height, regionId: region.id, color: [255, 196, 64, 180] });
+      derivedFillRef.current = new Uint8ClampedArray(result.rgba);
+      setHasDerivedFill(true);
       setPhase2Notice(`已生成区域 ${region.id} 的独立填色层，原图保持不变。`);
     } catch (caught) { setPhase2Notice(caught instanceof Error ? caught.message : '填色失败。'); }
     finally { setPhase2Busy(false); }
-  }, [runPhase2Task]);
+  }, [runPhase2Task, selectedRegionId]);
+
+  const exportFill = () => {
+    if (!derivedFillRef.current || !source) return;
+    const canvas = document.createElement('canvas'); canvas.width = source.metadata.width; canvas.height = source.metadata.height;
+    const pixels = new Uint8ClampedArray(derivedFillRef.current.length); pixels.set(derivedFillRef.current);
+    canvas.getContext('2d')?.putImageData(new ImageData(pixels, canvas.width, canvas.height), 0, 0);
+    void new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('无法编码填色层。')), 'image/png')).then((blob) => downloadBlob(blob, `${source.fileName.replace(/\.png$/i, '')}-fill.png`)).then(() => setPhase2Notice('已导出独立填色层。')).catch(() => setPhase2Notice('填色层导出失败。'));
+  };
 
   const generateBaseMask = useCallback(async () => {
     const obstacle = obstacleRef.current; if (!obstacle || !source) return;
@@ -304,7 +317,7 @@ export default function App() {
         <section className="canvas-column" aria-label="Canvas 预览">
           <CanvasPreview preview={preview} width={source.metadata.width} height={source.metadata.height} />
           {notice && <p className="notice" role="status">{notice}</p>}
-          <Phase2Panel candidates={phase2Candidates} regions={phase2Regions} busy={phase2Busy} notice={phase2Notice} onAnalyze={analyzeGaps} onAcceptClosure={acceptClosure} onRegions={recomputeRegions} onFill={fillRegion} onBaseMask={generateBaseMask} />
+          <Phase2Panel candidates={phase2Candidates} regions={phase2Regions} busy={phase2Busy} notice={phase2Notice} onAnalyze={analyzeGaps} onAcceptClosure={acceptClosure} onRegions={recomputeRegions} onFill={fillRegion} onBaseMask={generateBaseMask} selectedRegionId={selectedRegionId} onSelectRegion={setSelectedRegionId} onExportFill={exportFill} hasDerivedFill={hasDerivedFill} />
         </section>
         <StatusPanel fileName={source.fileName} metadata={source.metadata} sha256={source.sha256} offline={offline} error={error} />
       </div>
