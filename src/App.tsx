@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CanvasPreview } from './components/CanvasPreview';
+import { Phase2Panel } from './components/Phase2Panel';
 import { ImportCard } from './components/ImportCard';
 import { StatusPanel } from './components/StatusPanel';
 import { Toolbar } from './components/Toolbar';
@@ -8,10 +9,13 @@ import { decodeSourceImage, disposePreviewImage } from './services/imageDecode';
 import { getNetworkState, getOfflineReadiness, type OfflineReadiness } from './services/offline';
 import { exportUnchangedPng } from './services/export';
 import { ImportSequence } from './services/importSequence';
+import { applyVirtualClosure } from './engine/virtualClosure';
+import type { GapCandidate } from './engine/gapDetection';
+import type { RegionInfo } from './engine/connectedComponents';
 import { History } from './services/history';
 import { createProjectMeta, deleteProject, loadLatestProject, saveProject } from './services/projectStore';
 import { registerPwa } from './pwa';
-import { createComputeWorker } from './services/workerRpc';
+import { createComputeWorker, type WorkerClient } from './services/workerRpc';
 import type { PreviewImage, SourceImage } from './types/image';
 import type { ProjectMeta } from './types/project';
 
@@ -36,6 +40,14 @@ export default function App() {
   const previewRef = useRef<PreviewImage | null>(null);
   const historyRef = useRef(new History<SourceImage | null>(null));
   const projectMetaRef = useRef<ProjectMeta | null>(null);
+  const phase2WorkerRef = useRef<WorkerClient | null>(null);
+  const obstacleRef = useRef<Uint8Array | null>(null);
+  const skeletonRef = useRef<Uint8Array | null>(null);
+  const regionMapRef = useRef<{ labels: Int32Array; regions: RegionInfo[]; width: number; height: number } | null>(null);
+  const [phase2Candidates, setPhase2Candidates] = useState<GapCandidate[]>([]);
+  const [phase2Regions, setPhase2Regions] = useState<RegionInfo[]>([]);
+  const [phase2Busy, setPhase2Busy] = useState(false);
+  const [phase2Notice, setPhase2Notice] = useState<string | null>(null);
 
   const refreshOffline = useCallback(() => {
     void getOfflineReadiness().then(setOffline);
@@ -55,9 +67,82 @@ export default function App() {
 
   useEffect(() => {
     const worker = createComputeWorker();
+    phase2WorkerRef.current = worker;
     void worker.run({ jobId: crypto.randomUUID(), revision: 0, toolId: 'ping', params: {} }).catch(() => setNotice('计算 Worker 尚未就绪。'));
-    return () => worker.dispose();
+    return () => { phase2WorkerRef.current = null; worker.dispose(); };
   }, []);
+
+  const readPreviewPixels = useCallback((): Uint8ClampedArray | null => {
+    if (!preview || !source) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = source.metadata.width;
+    canvas.height = source.metadata.height;
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    context.drawImage(preview.image, 0, 0, canvas.width, canvas.height);
+    return context.getImageData(0, 0, canvas.width, canvas.height).data;
+  }, [preview, source]);
+
+  const runPhase2Task = useCallback(async <T,>(toolId: string, params: Record<string, unknown>): Promise<T> => {
+    if (!phase2WorkerRef.current || !source) throw new Error('Phase 2 Worker 尚未就绪。');
+    return phase2WorkerRef.current.run<T, Record<string, unknown>>({ jobId: crypto.randomUUID(), revision: projectMetaRef.current?.revision ?? 0, toolId, params });
+  }, [source]);
+
+  const analyzeGaps = useCallback(async () => {
+    if (!source) return;
+    setPhase2Busy(true); setPhase2Notice('正在分析线稿缺口…');
+    try {
+      const pixels = readPreviewPixels();
+      if (!pixels) throw new Error('无法读取当前预览像素。');
+      const width = source.metadata.width; const height = source.metadata.height;
+      const prepared = await runPhase2Task<{ mask: ArrayBuffer }>('preprocess', { rgba: pixels.buffer, width, height, options: { mode: 'transparent' } });
+      const obstacle = new Uint8Array(prepared.mask);
+      const thin = await runPhase2Task<{ skeleton: ArrayBuffer }>('skeletonize', { mask: obstacle.buffer, width, height });
+      const skeleton = new Uint8Array(thin.skeleton);
+      const detected = await runPhase2Task<{ candidates: GapCandidate[] }>('detect-gaps', { skeleton: skeleton.buffer, obstacle: obstacle.buffer, width, height, maxDistance: 24 });
+      obstacleRef.current = obstacle; skeletonRef.current = skeleton; setPhase2Candidates(detected.candidates); setPhase2Notice(`已找到 ${detected.candidates.length} 个待确认候选。`);
+    } catch (caught) { setPhase2Notice(caught instanceof Error ? caught.message : '缺口分析失败。'); }
+    finally { setPhase2Busy(false); }
+  }, [readPreviewPixels, runPhase2Task, source]);
+
+  const acceptClosure = () => {
+    const obstacle = obstacleRef.current; const candidate = phase2Candidates[0];
+    if (!obstacle || !candidate || !source) return;
+    obstacleRef.current = applyVirtualClosure(obstacle, source.metadata.width, source.metadata.height, candidate);
+    setPhase2Candidates((items) => items.map((item, index) => index === 0 ? { ...item, status: 'accepted' } : item));
+    setPhase2Notice('已接受首个候选的虚拟闭合，原始线稿未修改。');
+  };
+
+  const recomputeRegions = useCallback(async () => {
+    const obstacle = obstacleRef.current; if (!obstacle || !source) return;
+    setPhase2Busy(true); setPhase2Notice('正在重算连通区域…');
+    try {
+      const result = await runPhase2Task<{ labels: ArrayBuffer; regions: RegionInfo[]; width: number; height: number }>('regions', { obstacle: obstacle.buffer, width: source.metadata.width, height: source.metadata.height });
+      regionMapRef.current = { labels: new Int32Array(result.labels), regions: result.regions, width: result.width, height: result.height }; setPhase2Regions(result.regions); setPhase2Notice(`已生成 ${result.regions.length} 个几何区域。`);
+    } catch (caught) { setPhase2Notice(caught instanceof Error ? caught.message : '区域分析失败。'); }
+    finally { setPhase2Busy(false); }
+  }, [runPhase2Task, source]);
+
+  const fillRegion = useCallback(async () => {
+    const map = regionMapRef.current; if (!map) return;
+    const region = map.regions.find((item) => !item.isBackground); if (!region) { setPhase2Notice('没有可安全填充的前景区域。'); return; }
+    setPhase2Busy(true); setPhase2Notice('正在生成独立 RGBA 填色层…');
+    try {
+      await runPhase2Task('fill', { labels: map.labels.buffer, regions: map.regions, width: map.width, height: map.height, regionId: region.id, color: [255, 196, 64, 180] });
+      setPhase2Notice(`已生成区域 ${region.id} 的独立填色层，原图保持不变。`);
+    } catch (caught) { setPhase2Notice(caught instanceof Error ? caught.message : '填色失败。'); }
+    finally { setPhase2Busy(false); }
+  }, [runPhase2Task]);
+
+  const generateBaseMask = useCallback(async () => {
+    const obstacle = obstacleRef.current; if (!obstacle || !source) return;
+    setPhase2Busy(true); setPhase2Notice('正在生成整体底色 Mask…');
+    try {
+      const result = await runPhase2Task<{ mask: ArrayBuffer; warnings: string[] }>('base-mask', { obstacle: obstacle.buffer, width: source.metadata.width, height: source.metadata.height });
+      setPhase2Notice(result.warnings.length ? result.warnings.join(' ') : '已生成整体底色 Mask，请确认后再导出。');
+    } catch (caught) { setPhase2Notice(caught instanceof Error ? caught.message : '整体底色 Mask 失败。'); }
+    finally { setPhase2Busy(false); }
+  }, [runPhase2Task, source]);
 
   const applySource = useCallback(async (nextSource: SourceImage | null, notice: string) => {
     const sequence = sequenceRef.current.next();
@@ -219,6 +304,7 @@ export default function App() {
         <section className="canvas-column" aria-label="Canvas 预览">
           <CanvasPreview preview={preview} width={source.metadata.width} height={source.metadata.height} />
           {notice && <p className="notice" role="status">{notice}</p>}
+          <Phase2Panel candidates={phase2Candidates} regions={phase2Regions} busy={phase2Busy} notice={phase2Notice} onAnalyze={analyzeGaps} onAcceptClosure={acceptClosure} onRegions={recomputeRegions} onFill={fillRegion} onBaseMask={generateBaseMask} />
         </section>
         <StatusPanel fileName={source.fileName} metadata={source.metadata} sha256={source.sha256} offline={offline} error={error} />
       </div>

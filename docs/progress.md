@@ -47,6 +47,31 @@
 - [ ] iPadOS 触控下撤销/重做按钮和 Mask 对齐。
 - [ ] 真机 Worker 生命周期、内存压力和版本升级恢复。
 
+## Phase 2 — 视觉辅助
+
+### IN_PROGRESS
+
+- [x] 透明/白底预处理和 Zhang–Suen 骨架化。
+- [x] 端点缺口候选和用户确认后的虚拟闭合。
+- [x] 四连通区域标记、背景判断和几何选区基础。
+- [x] 独立 RGBA 智能填色层和整体底色 Mask 算法。
+- [x] Worker 任务和 Phase 2 UI 面板接入。
+- [x] 纯算法与集成测试。
+
+### MANUAL_PENDING
+
+- [ ] 真实复杂线稿上的候选误报、漏报和虚拟闭合审阅。
+- [ ] iPad Safari 上的 Phase 2 触控操作、内存和导出体验。
+- [ ] Procreate 中派生 Mask/填色层的像素对齐。
+
+2026-11-28 Phase 2 本地证据：
+
+- `npm run typecheck` — `PASS`。
+- `npm run lint` — `PASS`。
+- `npm run test` — `PASS`，20 个测试文件、26 个测试通过。
+- `npm run build` — `PASS`，Phase 2 Worker 已进入构建产物。
+- `npm run test:e2e` — `PASS`，Chromium/WebKit 共 10 个测试通过，包含 Phase 2 面板和 Worker 缺口分析。
+
 ## 证据记录
 
 2026-11-28 Phase 1 本地证据：

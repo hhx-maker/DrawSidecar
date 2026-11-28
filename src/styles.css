@@ -44,6 +44,14 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .preview-canvas { display: block; max-width: 100%; max-height: calc(100vh - 150px); box-shadow: 0 12px 24px #1f293333; }
 .mask-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .status-panel { align-self: start; color: #52606d; }
+.phase2-panel { width: min(760px, 100%); margin-top: 16px; padding: 12px 14px; color: #52606d; background: #fffdf9e8; border: 1px solid #ded8ce; border-radius: 12px; }
+.phase2-heading { color: #a05a2c; font-size: .78rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.phase2-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.phase2-actions button { min-height: 40px; padding: 8px 10px; color: #1f2933; background: #fffdf9; border: 1px solid #b9b0a4; border-radius: 8px; cursor: pointer; }
+.phase2-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.phase2-summary, .phase2-candidate, .phase2-note, .phase2-notice { margin: 8px 0 0; font-size: .78rem; line-height: 1.45; }
+.phase2-notice { color: #526b55; }
+.phase2-note { color: #8a918f; }
 .status-panel dl { margin: 18px 0; }
 .status-panel dl > div { padding: 12px 0; border-bottom: 1px solid #ebe5dc; }
 .status-panel dt { font-size: .75rem; color: #8a918f; }

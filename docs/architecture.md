@@ -36,3 +36,5 @@ Canvas 坐标映射使用 contain-fit 变换，记录缩放、留白偏移和原
 ## 当前范围
 
 Phase 0 没有 IndexedDB、Worker RPC 或 Undo/Redo。Phase 1 已建立项目元数据、本地保存、基础 Worker RPC、工具注册、坐标映射、Mask 显示和源状态撤销/重做。Phase 2 才进入缺口检测、骨架化、区域分析和填色。
+
+Phase 2 已将预处理、骨架化、缺口候选、虚拟闭合、区域标记、智能填色和整体底色任务接入独立 Worker。用户确认动作才会生成虚拟边界或派生层，原始源 Blob 始终不变。

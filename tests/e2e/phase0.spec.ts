@@ -45,3 +45,15 @@ test('fits a large imported image to the canvas area', async ({ page }) => {
   expect(box?.width ?? 0).toBeGreaterThan(400);
   expect(box?.height ?? 0).toBeGreaterThan(200);
 });
+
+test('exposes the Phase 2 visual assistance panel after import', async ({ page }) => {
+  await page.goto('/');
+  const chooserPromise = page.waitForEvent('filechooser');
+  await page.getByText('导入 PNG').first().click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles('public/fixtures/roundtrip-4x3.png');
+  await expect(page.getByRole('region', { name: 'Phase 2 视觉辅助' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '分析缺口' })).toBeEnabled();
+  await page.getByRole('button', { name: '分析缺口' }).click();
+  await expect(page.getByText(/已找到 .* 个待确认候选/)).toBeVisible({ timeout: 10_000 });
+});
